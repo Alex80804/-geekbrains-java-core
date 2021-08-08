@@ -7,6 +7,7 @@ import okhttp3.Request;
 import okhttp3.Response;
 
 import java.io.IOException;
+import java.sql.*;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -15,14 +16,21 @@ public class AccuweatherForecastModel implements WeatherForecast {
     // apiKey = "QfRAWNPVcQG5PvxrVGy1KHRHB1GLLH2u";
     public final String apiKey = "4IE3E0H7RIW6xId5Yefwqw1CwoAhlJQz";
 
+    Connection addConnection = null;
+    Connection getDataConnection = null;
 
     @Override
-    public void getWeatherForecast(int option, String cityName) throws IOException, ParseException {
+    public void getWeatherForecast(int option, String cityName) throws IOException, ParseException, ClassNotFoundException, SQLException {
+
+        Class.forName("org.sqlite.JDBC");
+        addConnection = DriverManager.getConnection("jdbc:sqlite:accuweather.db");
+
+        Statement addDataStatement = addConnection.createStatement();
 
         ObjectMapper forecastObjectMapper = new ObjectMapper();
 
         String cityID = getCityIDByName(cityName);
-        if (cityID == "(empty)") return;
+        if (cityID.equals("(empty)")) return;
 
         OkHttpClient forecastClient = new OkHttpClient.Builder().build();
 
@@ -47,6 +55,8 @@ public class AccuweatherForecastModel implements WeatherForecast {
 
 
                 if (!oneDayForecastResponseBody.equals("[]")) {
+                    addDataStatement.executeUpdate("delete from forecast");
+
                     DailyForecast oneDayForecast = forecastObjectMapper.readValue(oneDayForecastResponseBody, DailyForecast.class);
                     ArrayList<DailyForecasts> dailyForecasts = new ArrayList<>(oneDayForecast.getDailyForecasts());
                     System.out.println("Прогноз погоды на " + dailyForecasts.get(0).getDate().substring(0, 10) + " в городе " + cityName);
@@ -62,6 +72,16 @@ public class AccuweatherForecastModel implements WeatherForecast {
                     System.out.println("Основное событие на предстоящие 5 дней: "
                             + oneDayForecast.getHeadline().getText()
                             + " (" + oneDayForecast.getHeadline().getEffectiveDate().substring(0, 10) + ")");
+
+                    addDataStatement.executeUpdate("insert into forecast(city_name, first_date, forecast_date, min_temperature, max_temperature, headline) " +
+                            "values ('" + cityName + "', '" +
+                            dailyForecasts.get(0).getDate().substring(0, 10) + "', '" +
+                            dailyForecasts.get(0).getDate().substring(0, 10) + "', '" +
+                            dailyForecasts.get(0).getTemperatureObject().getMinimumObject().getValue() +
+                            dailyForecasts.get(0).getTemperatureObject().getMinimumObject().getUnit() + "', '" +
+                            dailyForecasts.get(0).getTemperatureObject().getMaximumObject().getValue() +
+                            dailyForecasts.get(0).getTemperatureObject().getMaximumObject().getUnit() + "', '" +
+                            oneDayForecast.getHeadline().getText() + "')");
                 }
                 break;
             }
@@ -85,6 +105,8 @@ public class AccuweatherForecastModel implements WeatherForecast {
                 String fiveDaysForecastResponseBody = fiveDaysForecastResponse.body().string();
 
                 if (!fiveDaysForecastResponseBody.equals("[]")) {
+                    addDataStatement.executeUpdate("delete from forecast");
+
                     DailyForecast fiveDaysForecast = forecastObjectMapper.readValue(fiveDaysForecastResponseBody, DailyForecast.class);
                     ArrayList<DailyForecasts> dailyForecasts = new ArrayList<>(fiveDaysForecast.getDailyForecasts());
                     System.out.println("Прогноз погоды на 5 дней с " + dailyForecasts.get(0).getDate().substring(0, 10) + " в городе " + cityName);
@@ -101,6 +123,16 @@ public class AccuweatherForecastModel implements WeatherForecast {
                                 dailyForecastIter.getTemperatureObject().getMinimumObject().getValue() +
                                 dailyForecastIter.getTemperatureObject().getMinimumObject().getUnit()
                         );
+
+                        addDataStatement.executeUpdate("insert into forecast(city_name, first_date, forecast_date, min_temperature, max_temperature, headline) " +
+                                "values ('" + cityName + "', '" +
+                                dailyForecasts.get(0).getDate().substring(0, 10) + "', '" +
+                                dailyForecastIter.getDate().substring(0, 10) + "', '" +
+                                dailyForecastIter.getTemperatureObject().getMinimumObject().getValue() +
+                                dailyForecastIter.getTemperatureObject().getMinimumObject().getUnit() + "', '" +
+                                dailyForecastIter.getTemperatureObject().getMaximumObject().getValue() +
+                                dailyForecastIter.getTemperatureObject().getMaximumObject().getUnit() + "', '" +
+                                fiveDaysForecast.getHeadline().getText() + "')");
                     }
 
                     System.out.println();
@@ -141,5 +173,29 @@ public class AccuweatherForecastModel implements WeatherForecast {
             cityID = citySearchObjectMapper.readTree(citySearchResponseBody).get(0).at("/Key").asText();
         }
         return cityID;
+    }
+
+    public void printDataFromDB() throws ClassNotFoundException, SQLException {
+        String lastHeadline = "";
+        Class.forName("org.sqlite.JDBC");
+        getDataConnection = DriverManager.getConnection("jdbc:sqlite:accuweather.db");
+        Statement getDataStatement = getDataConnection.createStatement();
+
+        ResultSet forecastResults = getDataStatement.executeQuery("select * from forecast");
+        while (forecastResults.next()) {
+            if (forecastResults.isFirst()) {
+                System.out.println("Прогноз погоды с " + forecastResults.getString("first_date") +
+                        " в городе " + forecastResults.getString("city_name"));
+                System.out.println();
+            }
+            System.out.println("Дата: " + forecastResults.getString("forecast_date") + "; " +
+                    "максимальная температура " + forecastResults.getString("max_temperature") + ", " +
+                    "минимальная температура " + forecastResults.getString("min_temperature"));
+            lastHeadline = forecastResults.getString("headline");
+        }
+        System.out.println();
+        System.out.println("Основное событие на предстоящие 5 дней: "
+                + lastHeadline);
+
     }
 }
