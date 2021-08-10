@@ -20,12 +20,7 @@ public class AccuweatherForecastModel implements WeatherForecast {
     Connection getDataConnection = null;
 
     @Override
-    public void getWeatherForecast(int option, String cityName) throws IOException, ParseException, ClassNotFoundException, SQLException {
-
-        Class.forName("org.sqlite.JDBC");
-        addConnection = DriverManager.getConnection("jdbc:sqlite:accuweather.db");
-
-        Statement addDataStatement = addConnection.createStatement();
+    public void getWeatherForecast(int option, String cityName) throws IOException, SQLException, ClassNotFoundException {
 
         ObjectMapper forecastObjectMapper = new ObjectMapper();
 
@@ -53,35 +48,10 @@ public class AccuweatherForecastModel implements WeatherForecast {
 
                 String oneDayForecastResponseBody = oneDayForecastResponse.body().string();
 
-
                 if (!oneDayForecastResponseBody.equals("[]")) {
-                    addDataStatement.executeUpdate("delete from forecast");
-
                     DailyForecast oneDayForecast = forecastObjectMapper.readValue(oneDayForecastResponseBody, DailyForecast.class);
-                    ArrayList<DailyForecasts> dailyForecasts = new ArrayList<>(oneDayForecast.getDailyForecasts());
-                    System.out.println("Прогноз погоды на " + dailyForecasts.get(0).getDate().substring(0, 10) + " в городе " + cityName);
-                    System.out.println();
-                    System.out.println("Максимальная температура " +
-                            dailyForecasts.get(0).getTemperatureObject().getMaximumObject().getValue() +
-                            dailyForecasts.get(0).getTemperatureObject().getMaximumObject().getUnit() + ", " +
-                            "минимальная температура " +
-                            dailyForecasts.get(0).getTemperatureObject().getMinimumObject().getValue() +
-                            dailyForecasts.get(0).getTemperatureObject().getMinimumObject().getUnit()
-                    );
-                    System.out.println();
-                    System.out.println("Основное событие на предстоящие 5 дней: "
-                            + oneDayForecast.getHeadline().getText()
-                            + " (" + oneDayForecast.getHeadline().getEffectiveDate().substring(0, 10) + ")");
-
-                    addDataStatement.executeUpdate("insert into forecast(city_name, first_date, forecast_date, min_temperature, max_temperature, headline) " +
-                            "values ('" + cityName + "', '" +
-                            dailyForecasts.get(0).getDate().substring(0, 10) + "', '" +
-                            dailyForecasts.get(0).getDate().substring(0, 10) + "', '" +
-                            dailyForecasts.get(0).getTemperatureObject().getMinimumObject().getValue() +
-                            dailyForecasts.get(0).getTemperatureObject().getMinimumObject().getUnit() + "', '" +
-                            dailyForecasts.get(0).getTemperatureObject().getMaximumObject().getValue() +
-                            dailyForecasts.get(0).getTemperatureObject().getMaximumObject().getUnit() + "', '" +
-                            oneDayForecast.getHeadline().getText() + "')");
+                    printForecast(oneDayForecast, cityName);
+                    saveForecastToDB(oneDayForecast, cityName);
                 }
                 break;
             }
@@ -105,40 +75,9 @@ public class AccuweatherForecastModel implements WeatherForecast {
                 String fiveDaysForecastResponseBody = fiveDaysForecastResponse.body().string();
 
                 if (!fiveDaysForecastResponseBody.equals("[]")) {
-                    addDataStatement.executeUpdate("delete from forecast");
-
                     DailyForecast fiveDaysForecast = forecastObjectMapper.readValue(fiveDaysForecastResponseBody, DailyForecast.class);
-                    ArrayList<DailyForecasts> dailyForecasts = new ArrayList<>(fiveDaysForecast.getDailyForecasts());
-                    System.out.println("Прогноз погоды на 5 дней с " + dailyForecasts.get(0).getDate().substring(0, 10) + " в городе " + cityName);
-                    System.out.println();
-
-                    Iterator<DailyForecasts> iter = dailyForecasts.iterator();
-                    while (iter.hasNext()) {
-                        DailyForecasts dailyForecastIter = iter.next();
-                        System.out.println("Дата: " + dailyForecastIter.getDate().substring(0, 10) + "; " +
-                                "максимальная температура " +
-                                dailyForecastIter.getTemperatureObject().getMaximumObject().getValue() +
-                                dailyForecastIter.getTemperatureObject().getMaximumObject().getUnit() + ", " +
-                                "минимальная температура " +
-                                dailyForecastIter.getTemperatureObject().getMinimumObject().getValue() +
-                                dailyForecastIter.getTemperatureObject().getMinimumObject().getUnit()
-                        );
-
-                        addDataStatement.executeUpdate("insert into forecast(city_name, first_date, forecast_date, min_temperature, max_temperature, headline) " +
-                                "values ('" + cityName + "', '" +
-                                dailyForecasts.get(0).getDate().substring(0, 10) + "', '" +
-                                dailyForecastIter.getDate().substring(0, 10) + "', '" +
-                                dailyForecastIter.getTemperatureObject().getMinimumObject().getValue() +
-                                dailyForecastIter.getTemperatureObject().getMinimumObject().getUnit() + "', '" +
-                                dailyForecastIter.getTemperatureObject().getMaximumObject().getValue() +
-                                dailyForecastIter.getTemperatureObject().getMaximumObject().getUnit() + "', '" +
-                                fiveDaysForecast.getHeadline().getText() + "')");
-                    }
-
-                    System.out.println();
-                    System.out.println("Основное событие на предстоящие 5 дней: "
-                            + fiveDaysForecast.getHeadline().getText()
-                            + " (" + fiveDaysForecast.getHeadline().getEffectiveDate().substring(0, 10) + ")");
+                    printForecast(fiveDaysForecast, cityName);
+                    saveForecastToDB(fiveDaysForecast, cityName);
                 }
                 break;
             }
@@ -175,27 +114,98 @@ public class AccuweatherForecastModel implements WeatherForecast {
         return cityID;
     }
 
-    public void printDataFromDB() throws ClassNotFoundException, SQLException {
-        String lastHeadline = "";
-        Class.forName("org.sqlite.JDBC");
-        getDataConnection = DriverManager.getConnection("jdbc:sqlite:accuweather.db");
-        Statement getDataStatement = getDataConnection.createStatement();
 
-        ResultSet forecastResults = getDataStatement.executeQuery("select * from forecast");
-        while (forecastResults.next()) {
-            if (forecastResults.isFirst()) {
-                System.out.println("Прогноз погоды с " + forecastResults.getString("first_date") +
-                        " в городе " + forecastResults.getString("city_name"));
-                System.out.println();
-            }
-            System.out.println("Дата: " + forecastResults.getString("forecast_date") + "; " +
-                    "максимальная температура " + forecastResults.getString("max_temperature") + ", " +
-                    "минимальная температура " + forecastResults.getString("min_temperature"));
-            lastHeadline = forecastResults.getString("headline");
+    public void printForecast(DailyForecast forecast, String cityName) {
+
+        ArrayList<DailyForecasts> dailyForecasts = new ArrayList<>(forecast.getDailyForecasts());
+        System.out.println("Прогноз погоды с " + dailyForecasts.get(0).getDate().substring(0, 10) + " в городе " + cityName);
+        System.out.println();
+
+        Iterator<DailyForecasts> iter = dailyForecasts.iterator();
+        while (iter.hasNext()) {
+            DailyForecasts dailyForecastIter = iter.next();
+            System.out.println("Дата: " + dailyForecastIter.getDate().substring(0, 10) + "; " +
+                    "максимальная температура " +
+                    dailyForecastIter.getTemperatureObject().getMaximumObject().getValue() +
+                    dailyForecastIter.getTemperatureObject().getMaximumObject().getUnit() + ", " +
+                    "минимальная температура " +
+                    dailyForecastIter.getTemperatureObject().getMinimumObject().getValue() +
+                    dailyForecastIter.getTemperatureObject().getMinimumObject().getUnit()
+            );
         }
         System.out.println();
         System.out.println("Основное событие на предстоящие 5 дней: "
-                + lastHeadline);
+                + forecast.getHeadline().getText()
+                + " (" + forecast.getHeadline().getEffectiveDate().substring(0, 10) + ")");
+    }
 
+    public void saveForecastToDB(DailyForecast forecast, String cityName) throws ClassNotFoundException, SQLException {
+
+        Class.forName("org.sqlite.JDBC");
+        addConnection = DriverManager.getConnection("jdbc:sqlite:accuweather.db");
+        Statement addDataStatement = addConnection.createStatement();
+        addDataStatement.executeUpdate("delete from forecast");
+
+        ArrayList<DailyForecasts> dailyForecasts = new ArrayList<>(forecast.getDailyForecasts());
+
+        Iterator<DailyForecasts> iter = dailyForecasts.iterator();
+        while (iter.hasNext()) {
+            DailyForecasts dailyForecastIter = iter.next();
+            addDataStatement.executeUpdate("insert into forecast(city_name, first_date, forecast_date, min_temperature, max_temperature, headline) " +
+                    "values ('" + cityName + "', '" +
+                    dailyForecasts.get(0).getDate().substring(0, 10) + "', '" +
+                    dailyForecastIter.getDate().substring(0, 10) + "', '" +
+                    dailyForecastIter.getTemperatureObject().getMinimumObject().getValue() +
+                    dailyForecastIter.getTemperatureObject().getMinimumObject().getUnit() + "', '" +
+                    dailyForecastIter.getTemperatureObject().getMaximumObject().getValue() +
+                    dailyForecastIter.getTemperatureObject().getMaximumObject().getUnit() + "', '" +
+                    forecast.getHeadline().getText() + "')");
+        }
+        addConnection.close();
+    }
+
+    public void printDataFromDB() throws ClassNotFoundException, SQLException {
+
+        String cityName = "";
+        String minTempFromDB, maxTempFromDB;
+        Class.forName("org.sqlite.JDBC");
+        getDataConnection = DriverManager.getConnection("jdbc:sqlite:accuweather.db");
+        Statement getDataStatement = getDataConnection.createStatement();
+        DailyForecast forecast = new DailyForecast();
+        Headline forecastHeadline = new Headline();
+
+        ArrayList<DailyForecasts> dailyForecasts = new ArrayList<>();
+
+        ResultSet forecastResults = getDataStatement.executeQuery("select * from forecast");
+
+        while (forecastResults.next()) {
+            if (forecastResults.isFirst()) {
+                forecastHeadline.setEffectiveDate(forecastResults.getString("first_date"));
+                forecastHeadline.setText(forecastResults.getString("headline"));
+                forecast.setHeadline(forecastHeadline);
+                cityName = forecastResults.getString("city_name");
+            }
+            DailyForecasts dailyForecast = new DailyForecasts();
+            Temperature temperature = new Temperature();
+            Maximum maximum = new Maximum();
+            Minimum minimum = new Minimum();
+
+            dailyForecast.setDate(forecastResults.getString("forecast_date"));
+            minTempFromDB = forecastResults.getString("min_temperature");
+            maxTempFromDB = forecastResults.getString("max_temperature");
+            minimum.setUnit(minTempFromDB.substring(minTempFromDB.length() - 1, minTempFromDB.length()));
+            minimum.setValue(Float.parseFloat(minTempFromDB.substring(0, minTempFromDB.length() - 1)));
+            maximum.setUnit(maxTempFromDB.substring(maxTempFromDB.length() - 1, maxTempFromDB.length()));
+            maximum.setValue(Float.parseFloat(maxTempFromDB.substring(0, maxTempFromDB.length() - 1)));
+            temperature.setMinimumObject(minimum);
+            temperature.setMaximumObject(maximum);
+            dailyForecast.setTemperatureObject(temperature);
+            dailyForecasts.add(dailyForecast);
+        }
+        forecast.setDailyForecasts(dailyForecasts);
+
+        getDataConnection.close();
+
+        printForecast(forecast, cityName);
     }
 }
